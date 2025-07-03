@@ -15,12 +15,17 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Copy requirements first for better Docker layer caching
 COPY koyeb_requirements.txt .
-RUN pip install --no-cache-dir -r koyeb_requirements.txt
+
+# Upgrade pip and install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r koyeb_requirements.txt
 
 # Copy application code
-COPY . .
+COPY main.py .
+COPY solver.py .
+COPY app.py .
 
 # Create uploads directory
 RUN mkdir -p uploads
