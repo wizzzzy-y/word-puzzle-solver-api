@@ -1,23 +1,17 @@
 import os
 import logging
-from flask import Flask, request, jsonify, render_template, flash, redirect, url_for
+from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
-import cv2
-import numpy as np
-from PIL import Image
-import pytesseract
-import json
-from word_solver import WordPuzzleSolver
-from high_performance_solver import solve_word_puzzle
+from solver import WordPuzzleSolver
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
+app.secret_key = os.environ.get("SESSION_SECRET", "koyeb-secret-key")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Configuration
@@ -31,7 +25,7 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 # Create upload directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Initialize word puzzle solver
+# Initialize solver
 solver = WordPuzzleSolver()
 
 def allowed_file(filename):
@@ -41,8 +35,17 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
-    """Main page with upload form"""
-    return render_template('index.html')
+    """Health check endpoint"""
+    return jsonify({"status": "Word Puzzle Solver API is running", "version": "2.0"})
+
+@app.route('/health')
+def health():
+    """Detailed health check"""
+    return jsonify({
+        "status": "healthy",
+        "dictionary_size": len(solver.dictionary),
+        "upload_folder": UPLOAD_FOLDER
+    })
 
 @app.route('/solve', methods=['POST'])
 def solve_puzzle():
@@ -51,85 +54,39 @@ def solve_puzzle():
         # Check if file was uploaded
         if 'screenshot' not in request.files:
             return jsonify({'error': 'No screenshot file provided'}), 400
-        
+
         file = request.files['screenshot']
-        
+
         # Check if file is selected
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-        
+
         # Check if file is allowed
         if not allowed_file(file.filename):
             return jsonify({'error': 'File type not allowed'}), 400
-        
+
         # Save uploaded file
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        
+
         logger.info(f"Processing image: {filepath}")
-        
-        # Use high-performance solver for optimal speed
-        result = solve_word_puzzle(filepath)
-        
+
+        # Process the image and solve the puzzle
+        result = solver.solve_puzzle(filepath)
+
         # Clean up uploaded file
         try:
             os.remove(filepath)
-        except:
-            pass
-        
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary file: {e}")
+
         return jsonify(result)
-        
+
     except Exception as e:
         logger.error(f"Error processing puzzle: {str(e)}")
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
 
-@app.route('/test', methods=['GET', 'POST'])
-def test_upload():
-    """Test page for uploading and displaying results"""
-    if request.method == 'POST':
-        try:
-            # Check if file was uploaded
-            if 'screenshot' not in request.files:
-                flash('No screenshot file provided', 'error')
-                return redirect(request.url)
-            
-            file = request.files['screenshot']
-            
-            # Check if file is selected
-            if file.filename == '':
-                flash('No file selected', 'error')
-                return redirect(request.url)
-            
-            # Check if file is allowed
-            if not allowed_file(file.filename):
-                flash('File type not allowed', 'error')
-                return redirect(request.url)
-            
-            # Save uploaded file
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            
-            logger.info(f"Processing test image: {filepath}")
-            
-            # Use high-performance solver for optimal speed
-            result = solve_word_puzzle(filepath)
-            
-            # Clean up uploaded file
-            try:
-                os.remove(filepath)
-            except:
-                pass
-            
-            return render_template('index.html', result=result, result_json=json.dumps(result, indent=2))
-            
-        except Exception as e:
-            logger.error(f"Error processing test puzzle: {str(e)}")
-            flash(f'Processing failed: {str(e)}', 'error')
-            return redirect(request.url)
-    
-    return render_template('index.html')
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port, debug=False)
