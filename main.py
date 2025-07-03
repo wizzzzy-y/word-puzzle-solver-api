@@ -3,7 +3,7 @@ import logging
 from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
-from solver import solve_word_puzzle
+from solver import WordPuzzleSolver
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +25,9 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 # Create upload directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Initialize solver
+solver = WordPuzzleSolver()
+
 def allowed_file(filename):
     """Check if file extension is allowed"""
     return '.' in filename and \
@@ -33,7 +36,16 @@ def allowed_file(filename):
 @app.route('/')
 def index():
     """Health check endpoint"""
-    return jsonify({"status": "Word Puzzle Solver API is running", "version": "1.0"})
+    return jsonify({"status": "Word Puzzle Solver API is running", "version": "2.0"})
+
+@app.route('/health')
+def health():
+    """Detailed health check"""
+    return jsonify({
+        "status": "healthy",
+        "dictionary_size": len(solver.dictionary),
+        "upload_folder": UPLOAD_FOLDER
+    })
 
 @app.route('/solve', methods=['POST'])
 def solve_puzzle():
@@ -42,35 +54,35 @@ def solve_puzzle():
         # Check if file was uploaded
         if 'screenshot' not in request.files:
             return jsonify({'error': 'No screenshot file provided'}), 400
-        
+
         file = request.files['screenshot']
-        
+
         # Check if file is selected
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-        
+
         # Check if file is allowed
         if not allowed_file(file.filename):
             return jsonify({'error': 'File type not allowed'}), 400
-        
+
         # Save uploaded file
-        filename = secure_filename(file.filename)
+        filename = secure_filename(file.filename or 'image.jpg')
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        
+
         logger.info(f"Processing image: {filepath}")
-        
+
         # Process the image and solve the puzzle
-        result = solve_word_puzzle(filepath)
-        
+        result = solver.solve_puzzle(filepath)
+
         # Clean up uploaded file
         try:
             os.remove(filepath)
-        except:
-            pass
-        
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary file: {e}")
+
         return jsonify(result)
-        
+
     except Exception as e:
         logger.error(f"Error processing puzzle: {str(e)}")
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
