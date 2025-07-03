@@ -5,6 +5,8 @@ from PIL import Image
 import itertools
 import os
 import logging
+import requests
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -15,22 +17,72 @@ class WordPuzzleSolver:
         logger.info(f"Solver initialized with {len(self.dictionary)} words")
     
     def _load_dictionary(self):
-        words = {
-            # Words from P, R, T, A
-            'PAR', 'RAP', 'TAP', 'RAT', 'PAT', 'ART', 'TAR', 'APT',
-            'PART', 'TRAP', 'TARP', 'RAPT', 'PRAT',
+        """Load comprehensive English dictionary from online source"""
+        # Try to load from cache first
+        cache_file = "english_words_cache.txt"
+        
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    words = set(word.strip().upper() for word in f.readlines() if word.strip())
+                logger.info(f"Loaded {len(words)} words from cache")
+                return words
+            except Exception as e:
+                logger.warning(f"Failed to load cache: {e}")
+        
+        # Download comprehensive word list from GitHub
+        try:
+            logger.info("Downloading comprehensive English dictionary...")
+            url = "https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt"
             
-            # Common 3-letter words
-            'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HAD',
-            'HER', 'WAS', 'ONE', 'OUR', 'OUT', 'DAY', 'GET', 'HAS', 'HIM', 'HIS',
-            'CAR', 'CAT', 'RAT', 'BAT', 'HAT', 'MAT', 'PAT', 'SAT', 'FAT', 'VAT',
-            'ARC', 'CAP', 'TAP', 'APE', 'EAR', 'ERA', 'PEA', 'REP', 'JAR', 'JET', 
-            'JOB', 'JOY', 'LAD', 'LAP', 'LAY', 'LET', 'LID', 'LIP', 'LOT', 'LOW', 'LAW',
+            # Set timeout for production environment
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
             
-            # Common 4+ letter words  
-            'PARK', 'CARD', 'PACK', 'RACK', 'CRAP', 'CARP', 'DARK', 'MARK', 'BARK'
+            # Process word list
+            words_text = response.text
+            words = set()
+            
+            for word in words_text.strip().split('\n'):
+                word = word.strip().upper()
+                if word and len(word) >= 2 and word.isalpha():  # Filter valid words
+                    words.add(word)
+            
+            # Cache the downloaded words
+            try:
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    for word in sorted(words):
+                        f.write(word + '\n')
+                logger.info(f"Cached {len(words)} words to {cache_file}")
+            except Exception as e:
+                logger.warning(f"Failed to cache words: {e}")
+            
+            logger.info(f"Downloaded {len(words)} words from online source")
+            return words
+            
+        except Exception as e:
+            logger.error(f"Failed to download dictionary: {e}")
+            
+            # Fallback to basic word set
+            logger.info("Using fallback dictionary")
+            return self._get_fallback_dictionary()
+    
+    def _get_fallback_dictionary(self):
+        """Fallback dictionary when online download fails"""
+        return {
+            # Most common English words - comprehensive fallback
+            'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HAD', 'HER', 'WAS', 'ONE', 'OUR', 'OUT', 'DAY', 'GET', 'HAS', 'HIM', 'HIS', 'HOW', 'ITS', 'MAY', 'NEW', 'NOW', 'OLD', 'SEE', 'TWO', 'WHO', 'BOY', 'DID', 'LET', 'PUT', 'SAY', 'SHE', 'TOO', 'USE', 'WAY', 'WHO', 'OIL', 'SIT', 'SET',
+            
+            # 3-letter words
+            'ACE', 'ACT', 'ADD', 'AGE', 'AID', 'AIM', 'AIR', 'ARM', 'ART', 'ASK', 'ATE', 'BAD', 'BAG', 'BAR', 'BAT', 'BED', 'BEE', 'BET', 'BIG', 'BIT', 'BOX', 'BUY', 'CAR', 'CAT', 'COW', 'CRY', 'CUP', 'CUT', 'DOG', 'EAR', 'EAT', 'EGG', 'END', 'EYE', 'FAR', 'FEW', 'FLY', 'FOR', 'FUN', 'GOT', 'GUN', 'GUY', 'HAT', 'HIT', 'HOT', 'JOB', 'LAW', 'LAY', 'LEG', 'LET', 'LIE', 'LOT', 'LOW', 'MAN', 'MAP', 'NET', 'PAY', 'PEN', 'PET', 'PIG', 'POT', 'RAT', 'RED', 'RUN', 'SAD', 'SAT', 'SEA', 'SIT', 'SIX', 'SKY', 'SUN', 'TAX', 'TEA', 'TEN', 'TOP', 'TRY', 'VAN', 'WAR', 'WET', 'WIN', 'YES', 'YET', 'ZOO',
+            'FAT', 'FIT', 'FIX', 'FOG', 'FOX', 'FUR', 'GAP', 'GAS', 'GEL', 'GEM', 'GOD', 'ICE', 'ILL', 'INK', 'JAM', 'JAW', 'JOG', 'JOT', 'JOY', 'KEY', 'KID', 'KIT', 'LAB', 'LAG', 'LIT', 'LOG', 'MAD', 'MIX', 'MOB', 'MUD', 'NUT', 'ODD', 'ORB', 'OWL', 'OWN', 'PAD', 'PAN', 'PAR', 'PAW', 'PIN', 'PIT', 'PLY', 'POD', 'PRO', 'PUB', 'PUN', 'PUP', 'RAG', 'RAM', 'RAP', 'RAW', 'RAY', 'RIB', 'RID', 'RIM', 'RIP', 'ROB', 'ROD', 'ROT', 'ROW', 'RUB', 'RUG', 'RUM', 'RUT', 'SAP', 'SAW', 'SIN', 'SIP', 'SIR', 'SOB', 'SOD', 'SON', 'SOP', 'SOW', 'SOY', 'SPA', 'SPY', 'STY', 'TAB', 'TAG', 'TAN', 'TAP', 'TAR', 'TAT', 'TIC', 'TIE', 'TIN', 'TIP', 'TOE', 'TON', 'TOT', 'TOW', 'TOY', 'TUB', 'TUG', 'TUT', 'URN', 'VIA', 'VIE', 'VOW', 'WAD', 'WAG', 'WAN', 'WAX', 'WEB', 'WED', 'WEE', 'WIG', 'WIT', 'WOE', 'WOK', 'WON', 'WOO', 'WOW', 'YAK', 'YAM', 'YAP', 'YAW', 'YEA', 'YEN', 'YEP', 'YEW', 'YIN', 'YIP', 'YON', 'ZAP', 'ZED', 'ZEE', 'ZEN', 'ZIP', 'ZIT',
+            
+            # 4+ letter words (common ones)
+            'ABLE', 'AREA', 'ARMY', 'BABY', 'BACK', 'BALL', 'BAND', 'BANK', 'BASE', 'BATH', 'BEAR', 'BEAT', 'BEEN', 'BELL', 'BEST', 'BILL', 'BIRD', 'BLOW', 'BLUE', 'BOAT', 'BODY', 'BONE', 'BOOK', 'BORN', 'BOTH', 'BOYS', 'BUSY', 'CALL', 'CAME', 'CAMP', 'CARD', 'CARE', 'CARS', 'CASE', 'CASH', 'CELL', 'CITY', 'CLUB', 'COAL', 'COAT', 'COLD', 'COME', 'COOK', 'COOL', 'COPY', 'CORN', 'COST', 'CREW', 'DARK', 'DATA', 'DATE', 'DAYS', 'DEAD', 'DEAL', 'DEAR', 'DEEP', 'DESK', 'DOES', 'DONE', 'DOOR', 'DOWN', 'DRAW', 'DREW', 'DROP', 'DRUG', 'EACH', 'EARN', 'EAST', 'EASY', 'EDGE', 'ELSE', 'EVEN', 'EVER', 'FACE', 'FACT', 'FAIL', 'FAIR', 'FALL', 'FARM', 'FAST', 'FEAR', 'FEEL', 'FEET', 'FELL', 'FELT', 'FILE', 'FILL', 'FILM', 'FIND', 'FINE', 'FIRE', 'FIRM', 'FISH', 'FIVE', 'FLAT', 'FLOW', 'FOOD', 'FOOT', 'FORM', 'FOUR', 'FREE', 'FROM', 'FULL', 'FUND', 'GAME', 'GAVE', 'GIRL', 'GIVE', 'GLAD', 'GOES', 'GOLD', 'GONE', 'GOOD', 'GREW', 'GROW', 'HAIR', 'HALF', 'HALL', 'HAND', 'HARD', 'HARM', 'HEAD', 'HEAR', 'HEAT', 'HELD', 'HELP', 'HERE', 'HIGH', 'HILL', 'HOLD', 'HOME', 'HOPE', 'HOUR', 'HUGE', 'IDEA', 'INTO', 'ITEM', 'JOBS', 'JOIN', 'JUMP', 'JUST', 'KEEP', 'KEPT', 'KIND', 'KING', 'KNEW', 'KNOW', 'LAND', 'LAST', 'LATE', 'LEAD', 'LEFT', 'LESS', 'LIFE', 'LIKE', 'LINE', 'LIST', 'LIVE', 'LOAN', 'LONG', 'LOOK', 'LORD', 'LOSE', 'LOSS', 'LOST', 'LOVE', 'MADE', 'MAIL', 'MAIN', 'MAKE', 'MALE', 'MANY', 'MARK', 'MASS', 'MEAT', 'MEET', 'MIND', 'MINE', 'MISS', 'MODE', 'MORE', 'MOST', 'MOVE', 'MUCH', 'MUST', 'NAME', 'NEAR', 'NECK', 'NEED', 'NEWS', 'NEXT', 'NICE', 'NINE', 'NODE', 'NONE', 'NOON', 'NOTE', 'OPEN', 'ORAL', 'OVER', 'PAGE', 'PAID', 'PAIN', 'PAIR', 'PARK', 'PART', 'PASS', 'PAST', 'PATH', 'PEAK', 'PICK', 'PINK', 'PLAN', 'PLAY', 'PLOT', 'PLUS', 'POLL', 'POOL', 'POOR', 'PORT', 'POST', 'PULL', 'PURE', 'PUSH', 'RACE', 'RAIN', 'RANK', 'RATE', 'READ', 'REAL', 'REAR', 'RELY', 'REST', 'RICH', 'RIDE', 'RING', 'RISE', 'RISK', 'ROAD', 'ROCK', 'ROLE', 'ROLL', 'ROOM', 'ROOT', 'ROSE', 'RULE', 'RUNS', 'SAFE', 'SAID', 'SALE', 'SAME', 'SAVE', 'SEAT', 'SEEM', 'SELF', 'SELL', 'SEND', 'SENT', 'SHIP', 'SHOP', 'SHOT', 'SHOW', 'SICK', 'SIDE', 'SIGN', 'SITE', 'SIZE', 'SKIN', 'SLIP', 'SLOW', 'SNOW', 'SOFT', 'SOIL', 'SOLD', 'SOME', 'SONG', 'SOON', 'SORT', 'SOUL', 'SPOT', 'STAR', 'STAY', 'STEP', 'STOP', 'SUCH', 'SURE', 'TAKE', 'TALK', 'TALL', 'TANK', 'TAPE', 'TASK', 'TEAM', 'TELL', 'TERM', 'TEST', 'TEXT', 'THAN', 'THAT', 'THEN', 'THEY', 'THIN', 'THIS', 'TIME', 'TOLD', 'TONE', 'TOOK', 'TOOL', 'TOUR', 'TOWN', 'TREE', 'TRUE', 'TURN', 'TYPE', 'UNIT', 'UPON', 'USED', 'USER', 'VARY', 'VAST', 'VERY', 'VIEW', 'VOTE', 'WAGE', 'WAIT', 'WAKE', 'WALK', 'WALL', 'WANT', 'WARD', 'WARM', 'WASH', 'WAVE', 'WAYS', 'WEAK', 'WEAR', 'WEEK', 'WELL', 'WENT', 'WERE', 'WEST', 'WHAT', 'WHEN', 'WIDE', 'WIFE', 'WILD', 'WILL', 'WIND', 'WINE', 'WING', 'WIRE', 'WISE', 'WISH', 'WITH', 'WOOD', 'WORD', 'WORE', 'WORK', 'YARD', 'YEAH', 'YEAR', 'YOUR', 'ZERO', 'ZONE',
+            
+            # Common 5+ letter words
+            'ABOUT', 'ABOVE', 'ABUSE', 'ACTOR', 'ACUTE', 'ADMIT', 'ADOPT', 'ADULT', 'AFTER', 'AGAIN', 'AGENT', 'AGREE', 'AHEAD', 'ALARM', 'ALBUM', 'ALERT', 'ALIEN', 'ALIGN', 'ALIKE', 'ALIVE', 'ALLOW', 'ALONE', 'ALONG', 'ALTER', 'ANGLE', 'ANGRY', 'APART', 'APPLE', 'APPLY', 'ARENA', 'ARGUE', 'ARISE', 'ARRAY', 'ASIDE', 'ASSET', 'AVOID', 'AWAKE', 'AWARD', 'AWARE', 'BADLY', 'BASIC', 'BEACH', 'BEGAN', 'BEGIN', 'BEING', 'BENCH', 'BIRTH', 'BLACK', 'BLAME', 'BLANK', 'BLIND', 'BLOCK', 'BLOOD', 'BOARD', 'BOOST', 'BOOTH', 'BOUND', 'BRAIN', 'BRAND', 'BREAD', 'BREAK', 'BREED', 'BRIEF', 'BRING', 'BROAD', 'BROKE', 'BROWN', 'BUILD', 'BUILT', 'CATCH', 'CAUSE', 'CHAIN', 'CHAIR', 'CHAOS', 'CHARM', 'CHART', 'CHASE', 'CHEAP', 'CHECK', 'CHEST', 'CHIEF', 'CHILD', 'CHINA', 'CHOSE', 'CIVIL', 'CLAIM', 'CLASS', 'CLEAN', 'CLEAR', 'CLICK', 'CLIMB', 'CLOCK', 'CLOSE', 'CLOUD', 'COACH', 'COAST', 'COULD', 'COUNT', 'COURT', 'COVER', 'CRAFT', 'CRASH', 'CRAZY', 'CREAM', 'CRIME', 'CROSS', 'CROWD', 'CROWN', 'CRUDE', 'CURVE', 'CYCLE', 'DAILY', 'DANCE', 'DATED', 'DEALT', 'DEATH', 'DEBUT', 'DELAY', 'DEPTH', 'DOING', 'DOUBT', 'DOZEN', 'DRAFT', 'DRAMA', 'DRANK', 'DREAM', 'DRESS', 'DRILL', 'DRINK', 'DRIVE', 'DROVE', 'DYING', 'EAGER', 'EARLY', 'EARTH', 'EIGHT', 'ELITE', 'EMPTY', 'ENEMY', 'ENJOY', 'ENTER', 'ENTRY', 'EQUAL', 'ERROR', 'EVENT', 'EVERY', 'EXACT', 'EXIST', 'EXTRA', 'FAITH', 'FALSE', 'FAULT', 'FIELD', 'FIFTH', 'FIFTY', 'FIGHT', 'FINAL', 'FIRST', 'FIXED', 'FLASH', 'FLEET', 'FLOOR', 'FLUID', 'FOCUS', 'FORCE', 'FORTH', 'FORTY', 'FORUM', 'FOUND', 'FRAME', 'FRANK', 'FRAUD', 'FRESH', 'FRONT', 'FRUIT', 'FULLY', 'FUNNY', 'GIANT', 'GIVEN', 'GLASS', 'GLOBE', 'GOING', 'GRACE', 'GRADE', 'GRAND', 'GRANT', 'GRASS', 'GRAVE', 'GREAT', 'GREEN', 'GROSS', 'GROUP', 'GROWN', 'GUARD', 'GUESS', 'GUEST', 'GUIDE', 'HAPPY', 'HARSH', 'HEART', 'HEAVY', 'HENCE', 'HORSE', 'HOTEL', 'HOUSE', 'HUMAN', 'IDEAL', 'IMAGE', 'INDEX', 'INNER', 'INPUT', 'ISSUE', 'JAPAN', 'JOINT', 'JUDGE', 'KNOWN', 'LABEL', 'LARGE', 'LASER', 'LATER', 'LAUGH', 'LAYER', 'LEARN', 'LEASE', 'LEAST', 'LEAVE', 'LEGAL', 'LEVEL', 'LIGHT', 'LIMIT', 'LINKS', 'LIVES', 'LOCAL', 'LOOSE', 'LOWER', 'LUCKY', 'LUNCH', 'LYING', 'MAGIC', 'MAJOR', 'MAKER', 'MARCH', 'MATCH', 'MAYBE', 'MAYOR', 'MEANT', 'MEDIA', 'METAL', 'MIGHT', 'MINOR', 'MINUS', 'MIXED', 'MODEL', 'MONEY', 'MONTH', 'MORAL', 'MOTOR', 'MOUNT', 'MOUSE', 'MOUTH', 'MOVED', 'MOVIE', 'MUSIC', 'NEEDS', 'NEVER', 'NEWLY', 'NIGHT', 'NOISE', 'NORTH', 'NOTED', 'NOVEL', 'NURSE', 'OCCUR', 'OCEAN', 'OFFER', 'OFTEN', 'ORDER', 'OTHER', 'OUGHT', 'PAINT', 'PANEL', 'PAPER', 'PARTY', 'PEACE', 'PHASE', 'PHONE', 'PHOTO', 'PIANO', 'PIECE', 'PILOT', 'PITCH', 'PLACE', 'PLAIN', 'PLANE', 'PLANT', 'PLATE', 'POINT', 'POUND', 'POWER', 'PRESS', 'PRICE', 'PRIDE', 'PRIME', 'PRINT', 'PRIOR', 'PRIZE', 'PROOF', 'PROUD', 'PROVE', 'QUEEN', 'QUICK', 'QUIET', 'QUITE', 'RADIO', 'RAISE', 'RANGE', 'RAPID', 'RATIO', 'REACH', 'READY', 'REALM', 'REBEL', 'REFER', 'RELAX', 'RELAY', 'REPLY', 'RIGHT', 'RIGID', 'RIVAL', 'RIVER', 'ROBOT', 'ROMAN', 'ROUGH', 'ROUND', 'ROUTE', 'ROYAL', 'RURAL', 'SCALE', 'SCENE', 'SCOPE', 'SCORE', 'SENSE', 'SERVE', 'SEVEN', 'SHALL', 'SHAPE', 'SHARE', 'SHARP', 'SHEET', 'SHELF', 'SHELL', 'SHIFT', 'SHINE', 'SHIRT', 'SHOCK', 'SHOOT', 'SHORT', 'SHOWN', 'SIDES', 'SIGHT', 'SILLY', 'SINCE', 'SIXTH', 'SIXTY', 'SIZED', 'SKILL', 'SLEEP', 'SLIDE', 'SMALL', 'SMART', 'SMILE', 'SMITH', 'SMOKE', 'SOLID', 'SOLVE', 'SORRY', 'SOUND', 'SOUTH', 'SPACE', 'SPARE', 'SPEAK', 'SPEED', 'SPEND', 'SPENT', 'SPLIT', 'SPOKE', 'SPORT', 'STAFF', 'STAGE', 'STAKE', 'STAND', 'START', 'STATE', 'STEAM', 'STEEL', 'STEEP', 'STEER', 'STICK', 'STILL', 'STOCK', 'STONE', 'STOOD', 'STORE', 'STORM', 'STORY', 'STRIP', 'STUCK', 'STUDY', 'STUFF', 'STYLE', 'SUGAR', 'SUITE', 'SUPER', 'SWEET', 'SWIFT', 'SWING', 'SWISS', 'TABLE', 'TAKEN', 'TASTE', 'TAXES', 'TEACH', 'TEENS', 'TEETH', 'TEMPO', 'TERMS', 'TEXAS', 'THANK', 'THEFT', 'THEIR', 'THEME', 'THERE', 'THESE', 'THICK', 'THING', 'THINK', 'THIRD', 'THOSE', 'THREE', 'THREW', 'THROW', 'THUMB', 'TIGER', 'TIGHT', 'TIMER', 'TIRED', 'TITLE', 'TODAY', 'TOPIC', 'TOTAL', 'TOUCH', 'TOUGH', 'TOWER', 'TRACK', 'TRADE', 'TRAIL', 'TRAIN', 'TREAT', 'TREND', 'TRIAL', 'TRIBE', 'TRICK', 'TRIED', 'TRIES', 'TRUCK', 'TRULY', 'TRUNK', 'TRUST', 'TRUTH', 'TWICE', 'TWIST', 'ULTRA', 'UNCLE', 'UNDER', 'UNDUE', 'UNION', 'UNITY', 'UNTIL', 'UPPER', 'UPSET', 'URBAN', 'USAGE', 'USUAL', 'VALID', 'VALUE', 'VIDEO', 'VIRUS', 'VISIT', 'VITAL', 'VOCAL', 'VOICE', 'WASTE', 'WATCH', 'WATER', 'WHEEL', 'WHERE', 'WHICH', 'WHILE', 'WHITE', 'WHOLE', 'WHOSE', 'WOMAN', 'WOMEN', 'WORLD', 'WORRY', 'WORSE', 'WORST', 'WORTH', 'WOULD', 'WRITE', 'WRONG', 'WROTE', 'YOUNG', 'YOUTH'
         }
-        return words
     
     def solve_puzzle(self, image_path):
         try:
@@ -46,6 +98,7 @@ class WordPuzzleSolver:
             return {"swipes": []}
     
     def _detect_letters(self, image_path):
+        """Adaptive letter detection that handles multiple puzzle layouts"""
         try:
             img = cv2.imread(image_path)
             if img is None:
@@ -53,32 +106,69 @@ class WordPuzzleSolver:
             
             h, w = img.shape[:2]
             
-            # Look for the circular letter wheel - it's typically in the bottom half
-            # Start from bottom 40% of the image
-            search_start_y = int(h * 0.6)
-            search_region = img[search_start_y:h, :]
+            # Try multiple detection strategies in order of reliability
             
-            # Convert to grayscale for circle detection
-            gray = cv2.cvtColor(search_region, cv2.COLOR_BGR2GRAY)
+            # Strategy 1: Look for circular letter wheel
+            letters = self._detect_circular_wheel(img)
+            if letters and len(letters) >= 3:
+                logger.info(f"Found {len(letters)} letters using circular detection")
+                return letters
             
-            # Detect circles using HoughCircles
+            # Strategy 2: Look for grid-based letters in bottom half
+            letters = self._detect_grid_layout(img)
+            if letters and len(letters) >= 3:
+                logger.info(f"Found {len(letters)} letters using grid detection")
+                return letters
+            
+            # Strategy 3: General contour-based detection
+            letters = self._detect_letters_fallback(img)
+            if letters and len(letters) >= 3:
+                logger.info(f"Found {len(letters)} letters using fallback detection")
+                return letters
+                
+            # Strategy 4: Search entire image for any text
+            letters = self._detect_letters_full_scan(img)
+            logger.info(f"Found {len(letters)} letters using full scan")
+            return letters
+            
+        except Exception as e:
+            logger.error(f"Detection error: {e}")
+            return []
+    
+    def _detect_circular_wheel(self, img):
+        """Detect letters arranged in a circular wheel pattern"""
+        h, w = img.shape[:2]
+        
+        # Search in bottom 50% of image for circular patterns
+        search_start_y = int(h * 0.5)
+        search_region = img[search_start_y:h, :]
+        
+        # Convert to grayscale for circle detection
+        gray = cv2.cvtColor(search_region, cv2.COLOR_BGR2GRAY)
+        
+        # Try multiple circle detection parameters
+        circle_params = [
+            (50, 30, 60, 150),   # Standard detection
+            (40, 25, 50, 200),   # More sensitive
+            (60, 35, 80, 180),   # Less sensitive
+        ]
+        
+        for param1, param2, minR, maxR in circle_params:
             circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, 100,
-                                     param1=50, param2=30, minRadius=80, maxRadius=200)
+                                     param1=param1, param2=param2, 
+                                     minRadius=minR, maxRadius=maxR)
             
             if circles is not None:
                 circles = np.round(circles[0, :]).astype("int")
-                # Use the largest circle (likely the letter wheel)
-                if len(circles) > 0:
-                    # Sort by radius and take the largest
-                    circle = max(circles, key=lambda c: c[2])
+                for circle in sorted(circles, key=lambda c: c[2], reverse=True):
                     cx, cy, radius = circle
                     
                     # Adjust coordinates to full image
                     center_x = cx
                     center_y = cy + search_start_y
                     
-                    # Extract the circular region with some padding
-                    padding = 20
+                    # Extract the circular region
+                    padding = 30
                     x1 = max(0, center_x - radius - padding)
                     y1 = max(0, center_y - radius - padding)
                     x2 = min(w, center_x + radius + padding)
@@ -91,15 +181,125 @@ class WordPuzzleSolver:
                                                            center_x - x1, 
                                                            center_y - y1, 
                                                            radius, x1, y1)
-                    if letters:
+                    if letters and len(letters) >= 3:
                         return letters
+        
+        return []
+    
+    def _detect_grid_layout(self, img):
+        """Detect letters arranged in a grid layout"""
+        h, w = img.shape[:2]
+        
+        # Focus on bottom half where letter grids are typically located
+        grid_region_y = int(h * 0.4)
+        grid_region = img[grid_region_y:h, :]
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(grid_region, cv2.COLOR_BGR2GRAY)
+        
+        # Apply adaptive threshold to handle varying lighting
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                     cv2.THRESH_BINARY_INV, 15, 8)
+        
+        # Find contours
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Filter for letter-sized rectangles
+        letter_candidates = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < 200 or area > 8000:  # Reasonable letter size range
+                continue
             
-            # Fallback: Look for letters in the bottom third using contour detection
-            return self._detect_letters_fallback(img)
+            x, y, w_box, h_box = cv2.boundingRect(contour)
             
-        except Exception as e:
-            logger.error(f"Detection error: {e}")
-            return []
+            # Check aspect ratio (should be roughly square for letters)
+            aspect_ratio = w_box / h_box
+            if aspect_ratio < 0.2 or aspect_ratio > 5.0:
+                continue
+            
+            # Check minimum size
+            if w_box < 20 or h_box < 20:
+                continue
+            
+            letter_candidates.append((x, y, w_box, h_box, area))
+        
+        # Sort by area and process largest candidates first
+        letter_candidates.sort(key=lambda x: x[4], reverse=True)
+        
+        letters = []
+        for x, y, w_box, h_box, area in letter_candidates[:10]:  # Limit to top 10
+            letter_region = grid_region[y:y+h_box, x:x+w_box]
+            letter = self._ocr_letter(letter_region)
+            
+            if letter and letter.isalpha():
+                center_x_abs = x + w_box // 2
+                center_y_abs = grid_region_y + y + h_box // 2
+                
+                letters.append({
+                    'letter': letter.upper(),
+                    'position': [center_x_abs, center_y_abs]
+                })
+        
+        return letters
+    
+    def _detect_letters_full_scan(self, img):
+        """Full image scan for any detectable letters"""
+        h, w = img.shape[:2]
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Try different threshold methods
+        threshold_methods = [
+            cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU),
+            cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2),
+            cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 15, 5)
+        ]
+        
+        all_letters = []
+        
+        for _, binary in threshold_methods:
+            # Find contours
+            contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:20]:
+                area = cv2.contourArea(contour)
+                if area < 100 or area > 10000:
+                    continue
+                
+                x, y, w_box, h_box = cv2.boundingRect(contour)
+                
+                # Basic size and aspect ratio checks
+                if w_box < 15 or h_box < 15 or w_box > 150 or h_box > 150:
+                    continue
+                
+                aspect_ratio = w_box / h_box
+                if aspect_ratio < 0.1 or aspect_ratio > 10.0:
+                    continue
+                
+                letter_region = img[y:y+h_box, x:x+w_box]
+                letter = self._ocr_letter(letter_region)
+                
+                if letter and letter.isalpha():
+                    center_x_abs = x + w_box // 2
+                    center_y_abs = y + h_box // 2
+                    
+                    # Avoid duplicates
+                    is_duplicate = False
+                    for existing in all_letters:
+                        if (abs(existing['position'][0] - center_x_abs) < 30 and 
+                            abs(existing['position'][1] - center_y_abs) < 30):
+                            is_duplicate = True
+                            break
+                    
+                    if not is_duplicate:
+                        all_letters.append({
+                            'letter': letter.upper(),
+                            'position': [center_x_abs, center_y_abs]
+                        })
+        
+        return all_letters[:8]  # Return up to 8 letters
     
     def _detect_letters_in_circle(self, wheel_img, center_x, center_y, radius, offset_x, offset_y):
         """Detect letters arranged in a circle"""
@@ -161,8 +361,8 @@ class WordPuzzleSolver:
         gray = cv2.cvtColor(wheel_region, cv2.COLOR_BGR2GRAY)
         
         # Apply adaptive threshold
-        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPT_THRESH_GAUSSIAN_C, 
-                                          cv2.THRESH_BINARY_INV, 11, 2)
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                     cv2.THRESH_BINARY_INV, 11, 2)
         
         # Find contours
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -249,7 +449,7 @@ class WordPuzzleSolver:
                         valid_path = True
                         for letter in perm:
                             available_pos = [pos for pos in letter_positions[letter] 
-                                              if tuple(pos) not in used_positions]
+                                           if tuple(pos) not in used_positions]
                             
                             if not available_pos:
                                 valid_path = False
