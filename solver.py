@@ -16,13 +16,19 @@ class WordPuzzleSolver:
     
     def _load_dictionary(self):
         words = {
+            # Words from P, R, T, A
+            'PAR', 'RAP', 'TAP', 'RAT', 'PAT', 'ART', 'TAR', 'APT',
+            'PART', 'TRAP', 'TARP', 'RAPT', 'PRAT',
+            
+            # Common 3-letter words
             'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HAD',
             'HER', 'WAS', 'ONE', 'OUR', 'OUT', 'DAY', 'GET', 'HAS', 'HIM', 'HIS',
             'CAR', 'CAT', 'RAT', 'BAT', 'HAT', 'MAT', 'PAT', 'SAT', 'FAT', 'VAT',
-            'PARK', 'CARD', 'PACK', 'RACK', 'CRAP', 'CARP', 'DARK', 'MARK', 'BARK ',
-            'ARC', 'PAR', 'RAP', 'CAP', 'TAP', 'RAT', 'PAT', 'BAT', 'CAT', 'HAT',
-            'APE', 'ARE', 'EAR', 'ERA', 'PEA', 'REP', 'JAR', 'JET', 'JOB', 'JOY',
-            'LAD', 'LAP', 'LAY', 'LET', 'LID', 'LIP', 'LOT', 'LOW', 'LAW'
+            'ARC', 'CAP', 'TAP', 'APE', 'EAR', 'ERA', 'PEA', 'REP', 'JAR', 'JET', 
+            'JOB', 'JOY', 'LAD', 'LAP', 'LAY', 'LET', 'LID', 'LIP', 'LOT', 'LOW', 'LAW',
+            
+            # Common 4+ letter words  
+            'PARK', 'CARD', 'PACK', 'RACK', 'CRAP', 'CARP', 'DARK', 'MARK', 'BARK'
         }
         return words
     
@@ -47,52 +53,146 @@ class WordPuzzleSolver:
             
             h, w = img.shape[:2]
             
-            # Focus on bottom 25% for letter wheel
-            wheel_start_y = int(h * 0.75)
-            center_x = w // 2
-            wheel_radius = min(w, h) // 4
-            wheel_start_x = max(0, center_x - wheel_radius)
-            wheel_end_x = min(w, center_x + wheel_radius)
+            # Look for the circular letter wheel - it's typically in the bottom half
+            # Start from bottom 40% of the image
+            search_start_y = int(h * 0.6)
+            search_region = img[search_start_y:h, :]
             
-            wheel = img[wheel_start_y: h, wheel_start_x:wheel_end_x]
+            # Convert to grayscale for circle detection
+            gray = cv2.cvtColor(search_region, cv2.COLOR_BGR2GRAY)
             
-            # Preprocess
-            gray = cv2.cvtColor(wheel, cv2.COLOR_BGR2GRAY)
-            _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # Detect circles using HoughCircles
+            circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, 100,
+                                     param1=50, param2=30, minRadius=80, maxRadius=200)
             
-            # Find contours
-            contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            letters = []
-            for contour in sorted(contours, key=cv2.contourArea, reverse=True):
-                area = cv2.contourArea(contour)
-                if area < 200 or area > wheel.shape[0] * wheel.shape[1] * 0.3:
-                    continue
-                
-                x, y, w_box, h_box = cv2.boundingRect(contour)
-                if w_box < 20 or h_box < 20:
-                    continue
-                
-                letter_region = wheel[y:y+h_box, x:x+w_box]
-                letter = self._ocr_letter(letter_region)
-                
-                if letter and letter.isalpha():
-                    center_x_abs = wheel_start_x + x + w_box // 2
-                    center_y_abs = wheel_start_y + y + h_box // 2
+            if circles is not None:
+                circles = np.round(circles[0, :]).astype("int")
+                # Use the largest circle (likely the letter wheel)
+                if len(circles) > 0:
+                    # Sort by radius and take the largest
+                    circle = max(circles, key=lambda c: c[2])
+                    cx, cy, radius = circle
                     
-                    letters.append({
-                        'letter': letter.upper(),
-                        'position': [center_x_abs, center_y_abs]
-                    })
-                
-                if len(letters) >= 6:
-                    break
+                    # Adjust coordinates to full image
+                    center_x = cx
+                    center_y = cy + search_start_y
+                    
+                    # Extract the circular region with some padding
+                    padding = 20
+                    x1 = max(0, center_x - radius - padding)
+                    y1 = max(0, center_y - radius - padding)
+                    x2 = min(w, center_x + radius + padding)
+                    y2 = min(h, center_y + radius + padding)
+                    
+                    wheel_region = img[y1:y2, x1:x2]
+                    
+                    # Detect letters in this circular region
+                    letters = self._detect_letters_in_circle(wheel_region, 
+                                                           center_x - x1, 
+                                                           center_y - y1, 
+                                                           radius, x1, y1)
+                    if letters:
+                        return letters
             
-            return letters
+            # Fallback: Look for letters in the bottom third using contour detection
+            return self._detect_letters_fallback(img)
             
         except Exception as e:
             logger.error(f"Detection error: {e}")
             return []
+    
+    def _detect_letters_in_circle(self, wheel_img, center_x, center_y, radius, offset_x, offset_y):
+        """Detect letters arranged in a circle"""
+        letters = []
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(wheel_img, cv2.COLOR_BGR2GRAY)
+        
+        # Apply threshold to get binary image
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        
+        # Find contours
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            # Filter contours by size - letters should be reasonably sized
+            if area < 100 or area > 5000:
+                continue
+            
+            x, y, w, h = cv2.boundingRect(contour)
+            
+            # Check if contour is roughly letter-sized
+            if w < 15 or h < 15 or w > 100 or h > 100:
+                continue
+            
+            # Check aspect ratio (letters shouldn't be too wide or too tall)
+            aspect_ratio = w / h
+            if aspect_ratio < 0.3 or aspect_ratio > 3.0:
+                continue
+            
+            # Extract letter region
+            letter_region = wheel_img[y:y+h, x:x+w]
+            
+            # OCR the letter
+            letter = self._ocr_letter(letter_region)
+            
+            if letter and letter.isalpha():
+                # Calculate absolute position
+                letter_center_x = offset_x + x + w // 2
+                letter_center_y = offset_y + y + h // 2
+                
+                letters.append({
+                    'letter': letter.upper(),
+                    'position': [int(letter_center_x), int(letter_center_y)]
+                })
+        
+        return letters
+    
+    def _detect_letters_fallback(self, img):
+        """Fallback method for letter detection"""
+        h, w = img.shape[:2]
+        
+        # Focus on bottom 30% of image
+        wheel_start_y = int(h * 0.7)
+        wheel_region = img[wheel_start_y:h, :]
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(wheel_region, cv2.COLOR_BGR2GRAY)
+        
+        # Apply adaptive threshold
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPT_THRESH_GAUSSIAN_C, 
+                                          cv2.THRESH_BINARY_INV, 11, 2)
+        
+        # Find contours
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        letters = []
+        for contour in sorted(contours, key=cv2.contourArea, reverse=True):
+            area = cv2.contourArea(contour)
+            if area < 100 or area > 3000:
+                continue
+            
+            x, y, w_box, h_box = cv2.boundingRect(contour)
+            if w_box < 15 or h_box < 15:
+                continue
+            
+            letter_region = wheel_region[y:y+h_box, x:x+w_box]
+            letter = self._ocr_letter(letter_region)
+            
+            if letter and letter.isalpha():
+                center_x_abs = x + w_box // 2
+                center_y_abs = wheel_start_y + y + h_box // 2
+                
+                letters.append({
+                    'letter': letter.upper(),
+                    'position': [center_x_abs, center_y_abs]
+                })
+            
+            if len(letters) >= 6:
+                break
+        
+        return letters
     
     def _ocr_letter(self, image_region):
         try:
@@ -149,7 +249,7 @@ class WordPuzzleSolver:
                         valid_path = True
                         for letter in perm:
                             available_pos = [pos for pos in letter_positions[letter] 
-                                             if tuple(pos) not in used_positions]
+                                              if tuple(pos) not in used_positions]
                             
                             if not available_pos:
                                 valid_path = False
