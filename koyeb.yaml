@@ -1,0 +1,26 @@
+name: word-puzzle-solver-api
+services:
+  - name: api
+    type: web
+    build:
+      type: docker
+      dockerfile: ./Dockerfile
+    ports:
+      - port: 8000
+        protocol: http
+    env:
+      - PORT=8000
+      - SESSION_SECRET=koyeb-secure-session-key
+    instance_type: nano
+    autoscaling:
+      min: 1
+      max: 2
+    health_check:
+      http:
+        path: /health
+        port: 8000
+      initial_delay_seconds: 30
+      timeout_seconds: 10
+      period_seconds: 30
+      success_threshold: 1
+      failure_threshold: 3
